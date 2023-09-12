@@ -3,7 +3,17 @@
 # from wikipedia
 RA = '00:42:44.3'
 DEC = '41:16:09'
+import numpy as np
 
+def clip_to_radius(ra, dec, RA, DEC, radius):
+    within_ra = []
+    within_dec = []
+    for i in range(len(ra)):
+        dist = np.sqrt((ra[i]-RA)**2 + (dec[i] - DEC)**2)
+        if dist< radius:
+            within_ra.append(ra[i])
+            within_dec.append(dec[i])
+    return within_ra, within_dec
 # convert to decimal degrees
 from math import cos, sin, pi
 
@@ -24,9 +34,9 @@ for i in range(nsrc):
     ras.append(ra + uniform(-1,1))
     decs.append(dec + uniform(-1,1))
 
-
+ras, decs = clip_to_radius(ras, decs, ra, dec, 5)
 # now write these to a csv file for use by my other program
 with open('catalog.csv','w') as f:
     print("id,ra,dec", file=f)
-    for i in range(nsrc):
+    for i in range(len(ras)):
         print(f"{i:07d}, {ras[i]:12f}, {decs[i]:12f}", file=f)
