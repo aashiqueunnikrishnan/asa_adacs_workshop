@@ -1,10 +1,20 @@
-# Determine Andromeda location in ra/dec degrees
+#! /usr/bin/env python
+"""
+Determine Andromeda location in ra/dec degrees
+"""
 
-# from wikipedia
+import argparse
+from random import uniform
+from math import cos, sin, pi
+import logging
+
+import mymodule
+
+
+NSRC = 1_000
 RA = '00:42:44.3'
 DEC = '41:16:09'
-import numpy as np
-import argparse
+
 def skysim_parser():
     """
     Configure the argparse for skysim
@@ -14,47 +24,96 @@ def skysim_parser():
     parser : argparse.ArgumentParser
         The parser for skysim.
     """
-    parser = argparse.ArgumentParser(prog='sky_sim', prefix_chars='-')
+    parser = argparse.ArgumentParser(prog='sky_sim', prefix_chars='-', description="Simulate a sky")
+    parser.add_argument('--version', action='version', version=f'%(prog)s {mymodule.__version__}')
     parser.add_argument('--ra', dest = 'ra', type=float, default=None,
                         help="Central ra (degrees) for the simulation location")
     parser.add_argument('--dec', dest = 'dec', type=float, default=None,
                         help="Central dec (degrees) for the simulation location")
     parser.add_argument('--out', dest='out', type=str, default='catalog.csv',
                         help='destination for the output catalog')
+    parser.add_argument('--logging', type=str, default='INFO',
+                        help='Logging level from (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
     return parser
 
-def clip_to_radius(ra, dec, RA, DEC, radius):
-    within_ra = []
-    within_dec = []
-    for i in range(len(ra)):
-        dist = np.sqrt((ra[i]-RA)**2 + (dec[i] - DEC)**2)
-        if dist< radius:
-            within_ra.append(ra[i])
-            within_dec.append(dec[i])
-    return within_ra, within_dec
-# convert to decimal degrees
-from math import cos, sin, pi
 
-d, m, s = DEC.split(':')
-dec = int(d)+int(m)/60+float(s)/3600
+def get_radec():
+    # from wikipedia
+    andromeda_ra = '00:42:44.3'
+    andromeda_dec = '41:16:09'
 
-h, m, s = RA.split(':')
-ra = 15*(int(h)+int(m)/60+float(s)/3600)
-ra = ra/cos(dec*pi/180)
+    d, m, s = andromeda_dec.split(':')
+    dec = int(d)+int(m)/60+float(s)/3600
 
-nsrc = 1_000_000
+    h, m, s = andromeda_ra.split(':')
+    ra = 15*(int(h)+int(m)/60+float(s)/3600)
+    ra = ra/cos(dec*pi/180)
+    return ra,dec
 
-# make 1000 stars within 1 degree of Andromeda
-from random import uniform
-ras = []
-decs = []
-for i in range(nsrc):
-    ras.append(ra + uniform(-1,1))
-    decs.append(dec + uniform(-1,1))
 
-ras, decs = clip_to_radius(ras, decs, ra, dec, 5)
-# now write these to a csv file for use by my other program
-with open('catalog.csv','w') as f:
-    print("id,ra,dec", file=f)
-    for i in range(len(ras)):
-        print(f"{i:07d}, {ras[i]:12f}, {decs[i]:12f}", file=f)
+def make_stars(ra, dec, nsrc=NSRC):
+    """
+    Generate NSRC stars within 1 degree of the given ra/dec
+
+    Parameters
+    ----------
+    ra,dec : float
+        The ra and dec in degrees for the central location.
+    nsrc : int
+        The number of star locations to generate
+
+    Returns
+    -------
+    ras, decs : list
+        A list of ra and dec coordinates.
+    """
+    ras = []
+    decs = []
+    for _ in range(nsrc):
+        ras.append(ra + uniform(-1,1))
+        decs.append(dec + uniform(-1,1))
+    return ras, decs
+
+
+def clip_to_radius(ra, dec, ras, decs):
+    output_ras = []
+    output_decs = []
+    for ra_i, dec_i in zip(ras, decs):
+        if (ra_i - ra)**2 + (dec_i - dec)**2 < 1:
+            output_ras.append(ra_i)
+            output_decs.append(dec_i)
+    return output_ras, output_decs
+
+
+def main():
+    parser = skysim_parser()
+    options = parser.parse_args()
+    loglevels = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL
+    }
+    logging.basicConfig(
+        format="%(name)s:%(levelname)s %(message)s",
+        level=loglevels[options.logging]
+    )
+    log = logging.getLogger("<my module>")
+
+    # if ra/dec are not supplied the use a default value
+    if None in [options.ra, options.dec]:
+        ra_deg, dec_deg = get_radec()
+    else:
+        ra_deg = options.ra
+        dec_deg = options.dec
+
+    ras, decs = make_stars(ra_deg, dec_deg)
+    ras, decs = clip_to_radius(ra_deg, dec_deg, ras, decs)
+
+    # now write these to a csv file for use by my other program
+    with open(options.out,'w') as f:
+        print("id,ra,dec", file=f)
+        for i in range(len(ras)):
+            print(f"{i:07d}, {ras[i]:12f}, {decs[i]:12f}", file=f)
+    print(f"Wrote {options.out}")
